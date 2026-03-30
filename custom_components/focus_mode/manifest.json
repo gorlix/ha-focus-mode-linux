@@ -1,0 +1,13 @@
+{
+  "domain": "focus_mode",
+  "name": "Focus Mode",
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/gorlix/ha-focus-mode-linux",
+  "integration_type": "hub",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/gorlix/ha-focus-mode-linux/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}
