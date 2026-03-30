@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configuring Focus Mode",
+        "description": "Enter the details of your local Focus Mode backend.",
+        "data": {
+          "host": "API Host URL",
+          "token": "Bearer Token"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the Focus Mode API.",
+      "invalid_auth": "Invalid authentication token.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
+    }
+  }
+}
