@@ -1,9 +1,4 @@
-"""API Client for the Focus Mode integration.
-
-This module provides the asynchronous client used to communicate with the local Focus Mode
-FastAPI backend. It strictly adheres to Home Assistant's non-blocking requirements by
-utilizing `aiohttp` and `async_timeout`.
-"""
+"""API Client for the Linux Focus Mode integration."""
 
 from __future__ import annotations
 
@@ -16,140 +11,103 @@ import async_timeout
 
 
 class FocusModeApiError(Exception):
-    """Base exception for all Focus Mode API errors.
-
-    Used to catch any generic or unexpected errors that occur during API communication,
-    ensuring that the Home Assistant core does not crash due to unhandled exceptions
-    from this integration.
-    """
+    """Base exception for all Focus Mode API errors."""
 
 
 class FocusModeApiCommunicationError(FocusModeApiError):
-    """Exception raised when a network communication error occurs.
-
-    This includes connection timeouts, TCP/IP level socket errors, and DNS resolution
-    failures, indicating that the backend is unreachable.
-    """
+    """Raised when a network communication error occurs (timeout, refused, DNS)."""
 
 
 class FocusModeApiAuthenticationError(FocusModeApiError):
-    """Exception raised when the provided authentication token is invalid.
-
-    Triggered when the backend returns HTTP 401 Unauthorized or HTTP 403 Forbidden.
-    """
+    """Raised when the bearer token is rejected (HTTP 401/403)."""
 
 
 class FocusModeApiClient:
-    """Asynchronous client for interacting with the Focus Mode API.
+    """Async client for the Focus Mode daemon REST API."""
 
-    This client abstracts the underlying HTTP details and provides clear, typed methods
-    for fetching the current state and toggling the focus mode.
-    """
-
-    def __init__(self, host: str, token: str, session: aiohttp.ClientSession) -> None:
-        """Initialize the Focus Mode API Client.
+    def __init__(
+        self, host: str, port: int, token: str, session: aiohttp.ClientSession
+    ) -> None:
+        """Initialize the client.
 
         Args:
-            host: The base URL of the Focus Mode FastAPI server (e.g., "http://192.168.1.100:8000").
-            token: The 32-character Bearer token used for authorization.
-            session: The `aiohttp.ClientSession` provided by Home Assistant (`async_get_clientsession`),
-                which ensures connection pooling and avoids creating unnecessary new sessions.
+            host: IP address or hostname of the Linux machine.
+            port: API port (typically 8000).
+            token: 32-character bearer token from the daemon.
+            session: Shared aiohttp session from `async_get_clientsession`.
         """
-        self._host = host.rstrip("/")
+        self._base_url = f"http://{host}:{port}"
         self._token = token
         self._session = session
 
     async def _api_wrapper(
-        self, method: str, url: str, data: dict[str, Any] | None = None
+        self, method: str, path: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Wrap the underlying async HTTP requests to the Focus Mode API.
-
-        This internal method centralizes error handling, timeout enforcement, and
-        JSON parsing for all API endpoints, reducing code duplication.
-
-        Args:
-            method: The HTTP method to use (e.g., "GET", "POST").
-            url: The relative URL path for the API endpoint.
-            data: Optional JSON payload to include in the request body.
-
-        Returns:
-            A dictionary containing the JSON response from the backend.
+        """Perform an authenticated HTTP request and return the JSON response.
 
         Raises:
-            FocusModeApiAuthenticationError: If the server rejects the request due to invalid credentials.
-            FocusModeApiCommunicationError: If the server cannot be reached or the request times out.
-            FocusModeApiError: If an unexpected error occurs during parsing or communication.
+            FocusModeApiAuthenticationError: On HTTP 401/403.
+            FocusModeApiCommunicationError: On timeout or connection failure.
+            FocusModeApiError: On any other unexpected error.
         """
         headers = {"Authorization": f"Bearer {self._token}"}
-
         try:
-            # We enforce a strict timeout of 10 seconds. In the context of Home Assistant,
-            # we cannot allow a blocked or infinitely hanging network call to tie up the
-            # async event loop, which would degrade the performance of the entire smart home system.
             async with async_timeout.timeout(10):
                 response = await self._session.request(
                     method=method,
-                    url=f"{self._host}{url}",
+                    url=f"{self._base_url}{path}",
                     headers=headers,
                     json=data,
                 )
-
-                # Differentiate authentication errors from generic HTTP errors so the Config Flow
-                # can prompt the user specifically to re-authenticate if necessary.
                 if response.status in (401, 403):
                     raise FocusModeApiAuthenticationError("Invalid credentials")
-
-                # Raise an aiohttp.ClientResponseError for any other non-2xx status codes.
                 response.raise_for_status()
                 return await response.json()
-
-        except asyncio.TimeoutError as exception:
-            raise FocusModeApiCommunicationError(
-                "Timeout occurred while connecting to API"
-            ) from exception
-        except (aiohttp.ClientError, socket.gaierror) as exception:
-            # socket.gaierror catches DNS resolution failures, while aiohttp.ClientError
-            # covers connection refusals and reset exceptions.
-            raise FocusModeApiCommunicationError(
-                "Error occurred while communicating with API"
-            ) from exception
+        except asyncio.TimeoutError as err:
+            raise FocusModeApiCommunicationError("Timeout connecting to daemon") from err
+        except (aiohttp.ClientError, socket.gaierror) as err:
+            raise FocusModeApiCommunicationError("Cannot connect to daemon") from err
         except FocusModeApiAuthenticationError:
-            # Re-raise authentication errors directly so they aren't caught by the generic block below.
             raise
-        except Exception as exception:  # pylint: disable=broad-except
-            # Fallback for any other obscure errors (e.g., malformed JSON parsing issues)
-            # to guarantee that only our custom exception types leak out of this wrapper.
-            raise FocusModeApiError(
-                f"Something really wrong happened! - {exception}"
-            ) from exception
+        except Exception as err:
+            raise FocusModeApiError(f"Unexpected API error: {err}") from err
+
+    # ── Read ──────────────────────────────────────────────────────────────────
 
     async def async_get_state(self) -> dict[str, Any]:
-        """Fetch the current operational state from the API.
-
-        This endpoint is polled by the DataUpdateCoordinator to keep Home Assistant
-        in sync with external changes to the Focus Mode backend.
-
-        Returns:
-            A dictionary representing the state:
-            `{"active": bool, "blocked_items": list[dict], "focus_lock": dict}`
-
-        Raises:
-            FocusModeApiAuthenticationError: If the token is invalid.
-            FocusModeApiCommunicationError: If the connection fails or times out.
-        """
+        """GET /api/state — full daemon state snapshot."""
         return await self._api_wrapper("GET", "/api/state")
 
+    # ── Blocker toggle ────────────────────────────────────────────────────────
+
     async def async_toggle_blocker(self, active: bool) -> dict[str, Any]:
-        """Toggle the Focus Mode blocker on or off.
-
-        Args:
-            active: True to enable Focus Mode blocking, False to disable it.
-
-        Returns:
-            A dictionary mirroring the updated state from the server.
-
-        Raises:
-            FocusModeApiAuthenticationError: If the token is invalid.
-            FocusModeApiCommunicationError: If the connection fails or times out.
-        """
+        """POST /api/toggle — activate or deactivate the process blocker."""
         return await self._api_wrapper("POST", "/api/toggle", data={"active": active})
+
+    # ── Lock ──────────────────────────────────────────────────────────────────
+
+    async def async_lock_timer(self, minutes: int) -> dict[str, Any]:
+        """POST /api/lock — timer lock for N minutes."""
+        return await self._api_wrapper(
+            "POST", "/api/lock", data={"mode": "timer", "minutes": minutes}
+        )
+
+    async def async_lock_target(self, hour: int, minute: int) -> dict[str, Any]:
+        """POST /api/lock — target-time lock until HH:MM today (or tomorrow)."""
+        return await self._api_wrapper(
+            "POST", "/api/lock", data={"mode": "target", "hour": hour, "minute": minute}
+        )
+
+    async def async_lock_ha(self) -> dict[str, Any]:
+        """POST /api/lock — indefinite HA lock, removable only via DELETE /api/lock."""
+        return await self._api_wrapper("POST", "/api/lock", data={"mode": "ha"})
+
+    async def async_unlock(self) -> dict[str, Any]:
+        """DELETE /api/lock — cancel any active lock including HA lock."""
+        return await self._api_wrapper("DELETE", "/api/lock")
+
+    # ── Restore ───────────────────────────────────────────────────────────────
+
+    async def async_toggle_restore(self, enabled: bool) -> dict[str, Any]:
+        """POST /api/restore — enable or disable auto-restore of blocked apps."""
+        return await self._api_wrapper("POST", "/api/restore", data={"enabled": enabled})
