@@ -1,0 +1,64 @@
+"""Webhook listener for push events from the Linux Focus Mode daemon."""
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING
+
+from homeassistant.components.webhook import (
+    async_register,
+    async_unregister,
+)
+from homeassistant.core import HomeAssistant, Request
+
+if TYPE_CHECKING:
+    from .coordinator import FocusModeCoordinator
+
+_LOGGER = logging.getLogger(__name__)
+
+
+async def async_register_webhook(
+    hass: HomeAssistant,
+    coordinator: FocusModeCoordinator,
+    webhook_id: str,
+) -> None:
+    """Register the HA webhook that receives push events from the daemon.
+
+    Both state_event_url and dying_gasp_url in the Linux app should point to
+    the same URL — this handler distinguishes between them via the event field.
+    """
+
+    async def _handle_webhook(
+        hass: HomeAssistant, webhook_id: str, request: Request
+    ) -> None:
+        try:
+            data = await request.json()
+        except Exception:
+            _LOGGER.warning("Received malformed webhook payload (not valid JSON)")
+            return
+
+        event = data.get("event", "")
+        _LOGGER.debug("Webhook received: %s", data)
+
+        if event == "dying_gasp":
+            # Daemon is shutting down — mark all entities unavailable immediately.
+            coordinator.set_unavailable()
+        else:
+            # Any other state-change event triggers an immediate coordinator refresh
+            # so entities update without waiting for the 30 s polling cycle.
+            await coordinator.async_request_refresh()
+
+    async_register(
+        hass,
+        domain="linux_focus_mode",
+        name="Linux Focus Mode events",
+        webhook_id=webhook_id,
+        handler=_handle_webhook,
+    )
+    _LOGGER.debug("Webhook registered: %s", webhook_id)
+
+
+def async_unregister_webhook(hass: HomeAssistant, webhook_id: str) -> None:
+    """Unregister the webhook on integration unload."""
+    async_unregister(hass, webhook_id)
+    _LOGGER.debug("Webhook unregistered: %s", webhook_id)
