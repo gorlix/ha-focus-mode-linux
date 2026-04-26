@@ -1,104 +1,165 @@
-# Focus Mode for Home Assistant
+# Linux Focus Mode for Home Assistant
 
-> A Home Assistant Custom Component by [Alessandro Gorla (gorlix)](https://github.com/gorlix)
+> A Home Assistant Custom Integration by [Alessandro Gorla (gorlix)](https://github.com/gorlix)
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/)
 [![HA Version](https://img.shields.io/badge/HA-2024.1.0%2B-blue)](https://www.home-assistant.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
----
-
-## Overview
-
-**Focus Mode for Home Assistant** is a custom integration that connects Home Assistant directly to a local **Focus Mode Linux companion application**, enabling full programmatic control over your machine's focus and productivity state from within your smart home ecosystem.
-
-This integration was designed and built from the ground up to:
-- **Toggle the Focus Mode blocker** on and off via a HA Switch entity, allowing you to trigger it from any automation, dashboard, voice assistant, or NFC tap.
-- **Monitor active blocked items and focus lock status** via a HA Sensor entity with rich state attributes exposed for use in Jinja2 templates, Node-RED flows, and automations.
-- **Synchronize dynamic notifications** from your Linux machine to Home Assistant in real time, bridging the gap between desktop productivity and home automation.
-- **Trigger Do Not Disturb (DND) states** on your Linux environment programmatically from HA automations — for example, when a calendar event starts, when you sit at your desk, or when a button is pressed.
+Control and monitor the **Linux Focus Mode** productivity daemon directly from Home Assistant.
+The integration exposes switches, sensors, binary sensors, and 8 services — all updated in
+real time via push webhooks from the daemon.
 
 ---
 
-## ⚠️ Current Limitation: Linux Only
+## Prerequisites
 
-> **This integration is currently Linux-only.**
-
-The Focus Mode companion backend runs as a local FastAPI service on your Linux machine. Windows and macOS are **not supported** at this time. The integration communicates with this backend over your local network via a REST API secured with a Bearer token.
-
----
-
-## Companion App (Backend)
-
-This integration requires the **Focus Mode Linux App** to be running on your local machine. You can find the companion application at:
-
-> **[ha-focus-mode-linux](https://github.com/gorlix/ha-focus-mode-linux)** — The desktop companion app that runs the blocking engine and exposes the local REST API.
-
-The backend must be started before adding this integration to Home Assistant. Refer to the companion app's documentation for setup instructions and how to retrieve your Bearer token.
-
----
-
-## Features
-
-| Entity | Type | Description |
-|---|---|---|
-| `switch.focus_mode_blocker` | Switch | Toggle Focus Mode blocking on and off |
-| `sensor.focus_mode_blocked_items` | Sensor | Current number of active blocked items |
-
-**Sensor Attributes** (available for Jinja2 / Node-RED):
-```yaml
-blocked_items:
-  - name: "YouTube"
-    type: "website"
-  - name: "Discord"
-    type: "application"
-focus_lock:
-  enabled: true
-  locked_until: "2026-03-30T19:00:00"
-```
+- Home Assistant ≥ 2024.1.0
+- [Focus Mode Linux App](https://github.com/gorlix/focus-mode-app-linux) running on your
+  Linux machine (branch: `Home-Assistant-Integration`)
+- HA instance reachable from the Linux machine (for webhook push)
 
 ---
 
 ## Installation
 
-### Via HACS (Recommended)
+### Via HACS (recommended)
 
-1. Open **HACS** in your Home Assistant instance.
-2. Go to **Integrations** → click the **⋮** menu → **Custom repositories**.
-3. Add `https://github.com/gorlix/ha-focus-mode-linux` as a custom repository of type **Integration**.
-4. Search for **"Focus Mode"** and click **Download**.
-5. **Restart** Home Assistant.
-6. Go to **Settings → Devices & Services → Add Integration** and search for **"Focus Mode"**.
+1. Open **HACS** → **Integrations** → **⋮** → **Custom repositories**.
+2. Add `https://github.com/gorlix/ha-focus-mode-linux` — type **Integration**.
+3. Search for **Linux Focus Mode** and click **Download**.
+4. Restart Home Assistant.
 
 ### Manual
 
-1. Download the latest release from the [Releases page](https://github.com/gorlix/ha-focus-mode-linux/releases).
-2. Copy the `custom_components/focus_mode/` folder into your Home Assistant `config/custom_components/` directory.
-3. **Restart** Home Assistant.
-4. Go to **Settings → Devices & Services → Add Integration** and search for **"Focus Mode"**.
+1. Download the latest release zip from the [Releases page](https://github.com/gorlix/ha-focus-mode-linux/releases).
+2. Copy `custom_components/linux_focus_mode/` into your HA `config/custom_components/` directory.
+3. Restart Home Assistant.
 
 ---
 
 ## Configuration
 
-During the UI setup, you will be prompted for:
+Go to **Settings → Devices & Services → Add Integration** → search **Linux Focus Mode**.
+
+### Step 1 — Connection
 
 | Field | Description | Example |
 |---|---|---|
-| **API Host URL** | The base URL of the Focus Mode backend | `http://192.168.1.100:8000` |
-| **Bearer Token** | The 32-character authentication token from the companion app | `your-secret-token-here` |
+| **Host** | IP address or hostname of the Linux machine | `192.168.1.100` |
+| **Port** | API port (default 8000) | `8000` |
+| **Bearer Token** | Token copied from the Linux app → Settings → HA Integration | `abcdef1234...` |
 
-The integration will perform a **live connection test** against your backend before saving the credentials. If the connection fails, an appropriate error will be displayed in the UI.
+The integration validates the connection live before saving. On failure it shows the exact error.
+
+### Step 2 — Webhook setup
+
+After saving credentials, HA displays a **webhook URL** like:
+
+```
+https://your-ha-instance.local/api/webhook/linux_focus_mode_xxxxxxxx
+```
+
+Open the Linux app → **Settings → HA Integration** and paste this URL into **both** fields:
+- **Webhook eventi di stato** (`state_event_url`)
+- **Webhook dying gasp** (`dying_gasp_url`)
+
+Using the same URL for both is correct — the integration distinguishes the two event types
+by reading the `event` field in the JSON payload.
 
 ---
 
-## Architecture
+## Entities
 
-This integration follows strict Home Assistant asynchronous standards:
+### Switches
 
-- **`aiohttp`** (via `async_get_clientsession`) is used exclusively for all HTTP communication. The synchronous `requests` library is **never** used.
-- A **`DataUpdateCoordinator`** polls the backend every 30 seconds and delivers a single shared state snapshot to all entities simultaneously, avoiding redundant API calls.
-- **`ConfigEntryAuthFailed`** is raised by the coordinator if the token is rejected, triggering HA's native re-authentication flow.
+| Entity | Description |
+|---|---|
+| `switch.linux_focus_mode_focus_mode` | Toggle the process blocker on/off |
+| `switch.linux_focus_mode_ha_lock` | Activate/deactivate the indefinite HA Lock |
+| `switch.linux_focus_mode_auto_restore` | Enable/disable auto-restore of blocked apps |
+
+> **Note:** Turning off the Focus Mode switch while HA Lock is active raises an error.
+> Use the HA Lock switch (or `unlock` service) to remove the lock first.
+
+### Sensors
+
+| Entity | Description |
+|---|---|
+| `sensor.linux_focus_mode_blocked_apps_count` | Number of configured blocked items |
+| `sensor.linux_focus_mode_lock_remaining_time` | Human-readable lock countdown, or `—` |
+
+### Binary Sensors
+
+| Entity | Description |
+|---|---|
+| `binary_sensor.linux_focus_mode_focus_locked` | `on` when any lock is active |
+| `binary_sensor.linux_focus_mode_app_online` | `on` when daemon is reachable |
+
+---
+
+## Services
+
+All services are callable from automations, scripts, and the Developer Tools.
+
+| Service | Parameters | Description |
+|---|---|---|
+| `linux_focus_mode.focus_on` | — | Activate the blocker |
+| `linux_focus_mode.focus_off` | — | Deactivate the blocker |
+| `linux_focus_mode.lock_timer` | `minutes` (int, > 0) | Timer lock for N minutes |
+| `linux_focus_mode.lock_target` | `hour` (0–23), `minute` (0–59) | Lock until HH:MM today |
+| `linux_focus_mode.lock_ha` | — | Indefinite HA lock |
+| `linux_focus_mode.unlock` | — | Cancel any active lock |
+| `linux_focus_mode.restore_on` | — | Enable auto-restore |
+| `linux_focus_mode.restore_off` | — | Disable auto-restore |
+
+### Example automation — 25-minute Pomodoro
+
+```yaml
+automation:
+  alias: "Start Pomodoro from button"
+  trigger:
+    - platform: state
+      entity_id: input_button.start_pomodoro
+  action:
+    - service: linux_focus_mode.focus_on
+    - service: linux_focus_mode.lock_timer
+      data:
+        minutes: 25
+```
+
+---
+
+## How it works
+
+```
+Home Assistant ←──── push webhook on every state change ────── Linux daemon
+     │                                                               ▲
+     └──── GET /api/state every 30 s (fallback) ──────────────────►│
+     └──── POST/DELETE /api/toggle|lock|restore (service calls) ───►│
+```
+
+- Push webhooks provide real-time updates (no 30 s wait).
+- The 30 s polling is a fallback for missed webhooks.
+- On app shutdown, a `dying_gasp` webhook marks all entities `unavailable` instantly.
+
+---
+
+## Troubleshooting
+
+**Entities show `unavailable`**
+- The daemon is not running or unreachable. Check that the Linux app is started.
+- Verify host/port in the integration settings.
+
+**Webhook not working (entities update only every 30 s)**
+- Make sure the webhook URL is pasted into both fields of the Linux app settings.
+- Verify your HA instance is reachable from the Linux machine (check firewall/Nabu Casa).
+
+**"Cannot disable Focus Mode while HA Lock is active"**
+- Turn off the HA Lock switch first, or call `linux_focus_mode.unlock`.
+
+**Re-entering credentials**
+- Go to **Settings → Devices & Services** → select the integration → **Configure**.
 
 ---
 
