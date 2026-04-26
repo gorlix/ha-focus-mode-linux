@@ -1,18 +1,14 @@
-"""Switch platform for the Focus Mode integration.
-
-This module provides a toggleable entity within Home Assistant, allowing the user
-to turn Focus Mode blocking on and off. It is deeply integrated with the
-`FocusModeCoordinator` for immediate UI feedback.
-"""
+"""Switch platform for the Linux Focus Mode integration."""
 
 from __future__ import annotations
 
 import logging
 from typing import Any
 
-from homeassistant.components.switch import SwitchEntity, SwitchDeviceClass
+from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -21,95 +17,127 @@ from .coordinator import FocusModeCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
+_DEVICE_INFO_BASE = {
+    "manufacturer": "Linux Focus Mode",
+    "model": "Focus Mode Daemon",
+}
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the Focus Mode switch platform from a ConfigEntry.
-
-    This function is dynamically loaded by Home Assistant during the integration boot sequence.
-
-    Args:
-        hass: The core instance.
-        entry: The configuration entry holding our instantiated coordinator in `hass.data`.
-        async_add_entities: A callback to register our initialized entities.
-    """
+    """Set up all switches from the config entry."""
     coordinator: FocusModeCoordinator = hass.data[DOMAIN][entry.entry_id]
+    async_add_entities(
+        [
+            FocusModeActiveSwitch(coordinator, entry),
+            FocusModeHaLockSwitch(coordinator, entry),
+            FocusModeRestoreSwitch(coordinator, entry),
+        ]
+    )
 
-    # We pass the coordinator to the entity so it knows where to get its state
-    # and when to re-render in the UI.
-    async_add_entities([FocusModeSwitch(coordinator, entry)])
 
-
-class FocusModeSwitch(CoordinatorEntity[FocusModeCoordinator], SwitchEntity):
-    """Representation of the Focus Mode toggle switch.
-
-    Inheriting from `CoordinatorEntity` ensures that this entity's `self.data` is automatically
-    updated whenever the coordinator completes a polling cycle, and that `self.async_write_ha_state()`
-    is called to refresh the UI immediately.
-    """
+class _FocusModeBaseSwitchEntity(CoordinatorEntity[FocusModeCoordinator], SwitchEntity):
+    """Common base for all Linux Focus Mode switches."""
 
     _attr_has_entity_name = True
-    _attr_name = "Blocker"
-    _attr_icon = "mdi:shield-lock"  # Intuitive visual indicator for a blocking service.
-    _attr_device_class = SwitchDeviceClass.SWITCH
 
     def __init__(self, coordinator: FocusModeCoordinator, entry: ConfigEntry) -> None:
-        """Initialize the Focus Mode switch.
-
-        Args:
-            coordinator: The central data manager.
-            entry: The config entry this entity belongs to. We use its ID for uniqueness.
-        """
         super().__init__(coordinator)
-
-        # A stable, unique ID is mandatory for Home Assistant to track UI customizations,
-        # history, and assignments to areas.
-        self._attr_unique_id = f"{entry.entry_id}_switch"
-
-        # We group this entity under a device representing the whole Focus Mode service.
         self._attr_device_info = {
+            **_DEVICE_INFO_BASE,
             "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": "Focus Mode Server",
-            "manufacturer": "Focus Mode",
-            "model": "Local API Backend",
+            "name": "Linux Focus Mode",
         }
 
     @property
-    def is_on(self) -> bool:
-        """Return True if the entity is on.
+    def available(self) -> bool:
+        return self.coordinator.available
 
-        The coordinator stores the raw JSON dictionary in `self.coordinator.data`.
-        We dynamically derive our state from the `active` boolean in that payload.
-        """
-        if self.coordinator.data is None:
+
+class FocusModeActiveSwitch(_FocusModeBaseSwitchEntity):
+    """Toggle the process blocker (Focus Mode Active)."""
+
+    _attr_translation_key = "active"
+    _attr_icon = "mdi:shield-lock"
+
+    def __init__(self, coordinator: FocusModeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_active"
+
+    @property
+    def is_on(self) -> bool:
+        if not self.coordinator.data:
             return False
         return bool(self.coordinator.data.get("active", False))
 
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn the Focus Mode blocker on.
+    def _ha_lock_active(self) -> bool:
+        if not self.coordinator.data:
+            return False
+        lock = self.coordinator.data.get("focus_lock", {})
+        return bool(lock.get("locked")) and lock.get("remaining_time") is None
 
-        This method triggers an immediate POST to the backend. Because we want the UI
-        to reflect the change instantly (rather than waiting 30 seconds for the next poll),
-        we explicitly request a data refresh right after the API call succeeds.
-        """
-        try:
-            await self.coordinator.client.async_toggle_blocker(True)
-            # Architectural Choice: Awaiting a forced refresh guarantees that all entities
-            # (including the sensor) sync their attributes (like `blocked_items`) immediately
-            # with the backend's new state.
-            await self.coordinator.async_request_refresh()
-        except Exception as err:
-            # We catch generic errors here to log them; Home Assistant handles
-            # marking the entity as unavailable if the coordinator refresh fails.
-            _LOGGER.error("Failed to turn on Focus Mode: %s", err)
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.client.async_toggle_blocker(True)
+        await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the Focus Mode blocker off."""
-        try:
-            await self.coordinator.client.async_toggle_blocker(False)
-            await self.coordinator.async_request_refresh()
-        except Exception as err:
-            _LOGGER.error("Failed to turn off Focus Mode: %s", err)
+        if self._ha_lock_active():
+            raise HomeAssistantError(
+                "Cannot disable Focus Mode while HA Lock is active"
+            )
+        await self.coordinator.client.async_toggle_blocker(False)
+        await self.coordinator.async_request_refresh()
+
+
+class FocusModeHaLockSwitch(_FocusModeBaseSwitchEntity):
+    """Indefinite HA lock — only removable via DELETE /api/lock."""
+
+    _attr_translation_key = "ha_lock"
+    _attr_icon = "mdi:lock"
+
+    def __init__(self, coordinator: FocusModeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_ha_lock"
+
+    @property
+    def is_on(self) -> bool:
+        if not self.coordinator.data:
+            return False
+        lock = self.coordinator.data.get("focus_lock", {})
+        return bool(lock.get("locked")) and lock.get("remaining_time") is None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.client.async_lock_ha()
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator.client.async_unlock()
+        await self.coordinator.async_request_refresh()
+
+
+class FocusModeRestoreSwitch(_FocusModeBaseSwitchEntity):
+    """Auto-Restore — relaunch blocked apps when blocking ends."""
+
+    _attr_translation_key = "restore"
+    _attr_icon = "mdi:restore"
+
+    def __init__(self, coordinator: FocusModeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_restore"
+
+    @property
+    def is_on(self) -> bool:
+        if not self.coordinator.data:
+            return False
+        return bool(self.coordinator.data.get("restore_enabled", False))
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.client.async_toggle_restore(True)
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator.client.async_toggle_restore(False)
+        await self.coordinator.async_request_refresh()
