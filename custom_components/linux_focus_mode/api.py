@@ -7,7 +7,6 @@ import socket
 from typing import Any
 
 import aiohttp
-import async_timeout
 
 
 class FocusModeApiError(Exception):
@@ -52,7 +51,7 @@ class FocusModeApiClient:
         """
         headers = {"Authorization": f"Bearer {self._token}"}
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 response = await self._session.request(
                     method=method,
                     url=f"{self._base_url}{path}",

@@ -35,7 +35,7 @@ async def _start_flow(hass: HomeAssistant) -> dict:
 
 async def test_config_flow_success(hass: HomeAssistant) -> None:
     """Happy path: valid credentials proceed to webhook step then create entry."""
-    await _start_flow(hass)
+    result = await _start_flow(hass)
 
     with patch(
         "custom_components.linux_focus_mode.config_flow.FocusModeApiClient"
@@ -59,9 +59,15 @@ async def test_config_flow_success(hass: HomeAssistant) -> None:
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "webhook"
 
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], user_input={}
-    )
+    # Patch async_setup_entry so HA does not attempt a real connection on entry creation.
+    with patch(
+        "custom_components.linux_focus_mode.async_setup_entry",
+        return_value=True,
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input={}
+        )
+
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert result["data"]["host"] == ENTRY_DATA["host"]
     assert "webhook_id" in result["data"]

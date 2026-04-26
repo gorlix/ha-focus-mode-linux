@@ -5,11 +5,12 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from aiohttp.web import Request
 from homeassistant.components.webhook import (
     async_register,
     async_unregister,
 )
-from homeassistant.core import HomeAssistant, Request
+from homeassistant.core import HomeAssistant
 
 if TYPE_CHECKING:
     from .coordinator import FocusModeCoordinator

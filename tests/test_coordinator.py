@@ -33,11 +33,13 @@ async def test_coordinator_communication_error(
     hass: HomeAssistant, mock_client: AsyncMock
 ) -> None:
     """Communication failure sets available=False and raises UpdateFailed."""
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
     mock_client.async_get_state.side_effect = FocusModeApiCommunicationError("timeout")
     coordinator = FocusModeCoordinator(hass, client=mock_client)
 
     with pytest.raises(UpdateFailed):
-        await coordinator.async_refresh()
+        await coordinator._async_update_data()
 
     assert coordinator.available is False
 
@@ -52,7 +54,7 @@ async def test_coordinator_auth_error(
     coordinator = FocusModeCoordinator(hass, client=mock_client)
 
     with pytest.raises(ConfigEntryAuthFailed):
-        await coordinator.async_refresh()
+        await coordinator._async_update_data()
 
     assert coordinator.available is False
 
@@ -73,14 +75,16 @@ async def test_coordinator_recovers_after_failure(
     hass: HomeAssistant, mock_client: AsyncMock
 ) -> None:
     """After a failure, a successful poll sets available=True again."""
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
     mock_client.async_get_state.side_effect = FocusModeApiCommunicationError("down")
     coordinator = FocusModeCoordinator(hass, client=mock_client)
 
     with pytest.raises(UpdateFailed):
-        await coordinator.async_refresh()
+        await coordinator._async_update_data()
     assert coordinator.available is False
 
     mock_client.async_get_state.side_effect = None
     mock_client.async_get_state.return_value = MOCK_STATE
-    await coordinator.async_refresh()
+    await coordinator._async_update_data()
     assert coordinator.available is True
