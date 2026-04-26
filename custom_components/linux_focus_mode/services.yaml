@@ -1,0 +1,64 @@
+focus_on:
+  name: Focus On
+  description: Activate the Focus Mode process blocker.
+
+focus_off:
+  name: Focus Off
+  description: Deactivate the Focus Mode process blocker.
+
+lock_timer:
+  name: Lock (Timer)
+  description: Activate a timer-based focus lock for N minutes.
+  fields:
+    minutes:
+      name: Minutes
+      description: Duration of the lock in minutes (must be > 0).
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 480
+          step: 1
+          mode: box
+          unit_of_measurement: min
+
+lock_target:
+  name: Lock (Target Time)
+  description: Activate a focus lock until a specific clock time today (or tomorrow if past).
+  fields:
+    hour:
+      name: Hour
+      description: Target hour (0–23).
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 23
+          step: 1
+          mode: box
+    minute:
+      name: Minute
+      description: Target minute (0–59).
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 59
+          step: 1
+          mode: box
+
+lock_ha:
+  name: Lock (HA Lock)
+  description: Activate an indefinite HA lock. Only removable via the Unlock service.
+
+unlock:
+  name: Unlock
+  description: Cancel any active focus lock, including the indefinite HA lock.
+
+restore_on:
+  name: Auto-Restore On
+  description: Enable automatic relaunch of blocked apps when blocking ends.
+
+restore_off:
+  name: Auto-Restore Off
+  description: Disable automatic relaunch of blocked apps when blocking ends.

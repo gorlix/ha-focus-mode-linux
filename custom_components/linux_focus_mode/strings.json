@@ -2,21 +2,55 @@
   "config": {
     "step": {
       "user": {
-        "title": "Configuring Focus Mode",
-        "description": "Enter the details of your local Focus Mode backend.",
+        "title": "Connect to Linux Focus Mode",
+        "description": "Enter the connection details for the Focus Mode daemon running on your Linux machine.",
         "data": {
-          "host": "API Host URL",
+          "host": "Host (IP or hostname)",
+          "port": "Port",
           "token": "Bearer Token"
         }
+      },
+      "webhook": {
+        "title": "Configure Webhooks",
+        "description": "Copy the URL below and paste it into **both** webhook fields of the Linux app (Settings → HA Integration):\n\n`{webhook_url}`\n\nThis URL must be reachable from your Linux machine."
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to the Focus Mode API.",
-      "invalid_auth": "Invalid authentication token.",
+      "cannot_connect": "Cannot connect to the Focus Mode daemon. Check host, port, and that the app is running.",
+      "invalid_auth": "Invalid bearer token. Check the token in the Linux app settings.",
       "unknown": "An unexpected error occurred."
     },
     "abort": {
-      "already_configured": "Device is already configured"
+      "already_configured": "This Focus Mode instance is already configured."
+    }
+  },
+  "entity": {
+    "switch": {
+      "active": {
+        "name": "Focus Mode"
+      },
+      "ha_lock": {
+        "name": "HA Lock"
+      },
+      "restore": {
+        "name": "Auto-Restore"
+      }
+    },
+    "sensor": {
+      "blocked_count": {
+        "name": "Blocked Apps Count"
+      },
+      "lock_remaining": {
+        "name": "Lock Remaining Time"
+      }
+    },
+    "binary_sensor": {
+      "locked": {
+        "name": "Focus Locked"
+      },
+      "app_online": {
+        "name": "App Online"
+      }
     }
   }
 }
