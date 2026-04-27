@@ -26,7 +26,12 @@ async def async_register_webhook(
     """Register the HA webhook that receives push events from the daemon.
 
     Both state_event_url and dying_gasp_url in the Linux app should point to
-    the same URL — this handler distinguishes between them via the event field.
+    the same URL — this handler distinguishes them via the event field.
+
+    Accepted payload shapes:
+    - Native app: {"type": "update_sensor_states", "data": [...]}
+    - Legacy:     {"event": "focus_toggled", "active": true}
+    - Dying gasp: {"event": "dying_gasp", "status": "offline"}
     """
 
     async def _handle_webhook(
@@ -38,16 +43,14 @@ async def async_register_webhook(
             _LOGGER.warning("Received malformed webhook payload (not valid JSON)")
             return
 
-        event = data.get("event", "")
         _LOGGER.debug("Webhook received: %s", data)
 
+        event = data.get("event", "")
+
         if event == "dying_gasp":
-            # Daemon is shutting down — mark all entities unavailable immediately.
             coordinator.set_unavailable()
         else:
-            # Any other state-change event triggers an immediate coordinator refresh
-            # so entities update without waiting for the 30 s polling cycle.
-            await coordinator.async_request_refresh()
+            coordinator.update_from_webhook(data)
 
     async_register(
         hass,
