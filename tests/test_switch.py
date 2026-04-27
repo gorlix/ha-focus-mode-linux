@@ -15,7 +15,9 @@ from custom_components.linux_focus_mode.switch import (
     FocusModeRestoreSwitch,
 )
 
-from .conftest import MOCK_STATE, MOCK_STATE_HA_LOCK, MOCK_STATE_TIMER_LOCK, mock_client
+from .conftest import MOCK_STATE, MOCK_STATE_HA_LOCK, MOCK_STATE_TIMER_LOCK
+
+_EVENT = "linux_focus_mode_command"
 
 
 def _make_entry():
@@ -24,111 +26,114 @@ def _make_entry():
     return entry
 
 
-async def test_active_switch_is_on(hass: HomeAssistant, mock_client: AsyncMock) -> None:
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
-    sw = FocusModeActiveSwitch(coordinator, _make_entry())
-    assert sw.is_on is True
+def _make_coordinator(hass: HomeAssistant, state: dict) -> FocusModeCoordinator:
+    coordinator = FocusModeCoordinator(hass)
+    coordinator.data = state
+    coordinator.available = True
+    return coordinator
 
 
-async def test_active_switch_is_off(hass: HomeAssistant, mock_client: AsyncMock) -> None:
-    mock_client.async_get_state.return_value = {**MOCK_STATE, "active": False}
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
-    sw = FocusModeActiveSwitch(coordinator, _make_entry())
+def _make_switch(hass, cls, state=None):
+    coordinator = _make_coordinator(hass, state or MOCK_STATE)
+    sw = cls(coordinator, _make_entry())
+    sw.hass = hass
+    return sw
+
+
+def _listen(hass: HomeAssistant) -> list:
+    fired = []
+    hass.bus.async_listen(_EVENT, lambda e: fired.append(dict(e.data)))
+    return fired
+
+
+# ── Active switch ──────────────────────────────────────────────────────────────
+
+async def test_active_switch_is_on(hass: HomeAssistant) -> None:
+    assert _make_switch(hass, FocusModeActiveSwitch).is_on is True
+
+
+async def test_active_switch_is_off(hass: HomeAssistant) -> None:
+    sw = _make_switch(hass, FocusModeActiveSwitch, {**MOCK_STATE, "active": False})
     assert sw.is_on is False
 
 
-async def test_active_switch_turn_on(hass: HomeAssistant, mock_client: AsyncMock) -> None:
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
-    sw = FocusModeActiveSwitch(coordinator, _make_entry())
-    await sw.async_turn_on()
-    mock_client.async_toggle_blocker.assert_awaited_once_with(True)
+async def test_active_switch_turn_on_fires_event(hass: HomeAssistant) -> None:
+    fired = _listen(hass)
+    await _make_switch(hass, FocusModeActiveSwitch).async_turn_on()
+    await hass.async_block_till_done()
+    assert fired == [{"action": "focus_on"}]
 
 
-async def test_active_switch_turn_off_blocked_by_ha_lock(
-    hass: HomeAssistant, mock_client: AsyncMock
-) -> None:
-    """turn_off must raise HomeAssistantError when HA Lock is active."""
-    mock_client.async_get_state.return_value = MOCK_STATE_HA_LOCK
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
-    sw = FocusModeActiveSwitch(coordinator, _make_entry())
+async def test_active_switch_turn_off_fires_event(hass: HomeAssistant) -> None:
+    fired = _listen(hass)
+    await _make_switch(hass, FocusModeActiveSwitch).async_turn_off()
+    await hass.async_block_till_done()
+    assert fired == [{"action": "focus_off"}]
 
+
+async def test_active_switch_turn_off_blocked_by_ha_lock(hass: HomeAssistant) -> None:
+    fired = _listen(hass)
+    sw = _make_switch(hass, FocusModeActiveSwitch, MOCK_STATE_HA_LOCK)
     with pytest.raises(HomeAssistantError):
         await sw.async_turn_off()
-
-    mock_client.async_toggle_blocker.assert_not_awaited()
-
-
-async def test_active_switch_turn_off_allowed_with_timer_lock(
-    hass: HomeAssistant, mock_client: AsyncMock
-) -> None:
-    """turn_off is allowed when lock has remaining_time (not HA lock)."""
-    mock_client.async_get_state.return_value = MOCK_STATE_TIMER_LOCK
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
-    sw = FocusModeActiveSwitch(coordinator, _make_entry())
-    await sw.async_turn_off()
-    mock_client.async_toggle_blocker.assert_awaited_once_with(False)
+    assert fired == []
 
 
-async def test_ha_lock_switch_is_on(hass: HomeAssistant, mock_client: AsyncMock) -> None:
-    mock_client.async_get_state.return_value = MOCK_STATE_HA_LOCK
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
-    sw = FocusModeHaLockSwitch(coordinator, _make_entry())
-    assert sw.is_on is True
+async def test_active_switch_turn_off_allowed_with_timer_lock(hass: HomeAssistant) -> None:
+    fired = _listen(hass)
+    await _make_switch(hass, FocusModeActiveSwitch, MOCK_STATE_TIMER_LOCK).async_turn_off()
+    await hass.async_block_till_done()
+    assert fired == [{"action": "focus_off"}]
 
 
-async def test_ha_lock_switch_off_with_timer_lock(
-    hass: HomeAssistant, mock_client: AsyncMock
-) -> None:
-    """HA Lock switch is OFF when lock has remaining_time (timer/target lock)."""
-    mock_client.async_get_state.return_value = MOCK_STATE_TIMER_LOCK
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
-    sw = FocusModeHaLockSwitch(coordinator, _make_entry())
-    assert sw.is_on is False
+# ── HA Lock switch ─────────────────────────────────────────────────────────────
+
+async def test_ha_lock_switch_is_on(hass: HomeAssistant) -> None:
+    assert _make_switch(hass, FocusModeHaLockSwitch, MOCK_STATE_HA_LOCK).is_on is True
 
 
-async def test_ha_lock_turn_on(hass: HomeAssistant, mock_client: AsyncMock) -> None:
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
-    sw = FocusModeHaLockSwitch(coordinator, _make_entry())
-    await sw.async_turn_on()
-    mock_client.async_lock_ha.assert_awaited_once()
+async def test_ha_lock_switch_off_with_timer_lock(hass: HomeAssistant) -> None:
+    assert _make_switch(hass, FocusModeHaLockSwitch, MOCK_STATE_TIMER_LOCK).is_on is False
 
 
-async def test_ha_lock_turn_off(hass: HomeAssistant, mock_client: AsyncMock) -> None:
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
-    sw = FocusModeHaLockSwitch(coordinator, _make_entry())
-    await sw.async_turn_off()
-    mock_client.async_unlock.assert_awaited_once()
+async def test_ha_lock_turn_on_fires_event(hass: HomeAssistant) -> None:
+    fired = _listen(hass)
+    await _make_switch(hass, FocusModeHaLockSwitch).async_turn_on()
+    await hass.async_block_till_done()
+    assert fired == [{"action": "lock_ha"}]
 
 
-async def test_restore_switch_is_on(hass: HomeAssistant, mock_client: AsyncMock) -> None:
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
-    sw = FocusModeRestoreSwitch(coordinator, _make_entry())
-    assert sw.is_on is True  # MOCK_STATE has restore_enabled=True
+async def test_ha_lock_turn_off_fires_event(hass: HomeAssistant) -> None:
+    fired = _listen(hass)
+    await _make_switch(hass, FocusModeHaLockSwitch).async_turn_off()
+    await hass.async_block_till_done()
+    assert fired == [{"action": "unlock"}]
 
 
-async def test_restore_switch_turn_off(hass: HomeAssistant, mock_client: AsyncMock) -> None:
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
-    sw = FocusModeRestoreSwitch(coordinator, _make_entry())
-    await sw.async_turn_off()
-    mock_client.async_toggle_restore.assert_awaited_once_with(False)
+# ── Restore switch ─────────────────────────────────────────────────────────────
+
+async def test_restore_switch_is_on(hass: HomeAssistant) -> None:
+    assert _make_switch(hass, FocusModeRestoreSwitch).is_on is True
 
 
-async def test_switch_unavailable_when_coordinator_offline(
-    hass: HomeAssistant, mock_client: AsyncMock
-) -> None:
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
+async def test_restore_switch_turn_on_fires_event(hass: HomeAssistant) -> None:
+    fired = _listen(hass)
+    await _make_switch(hass, FocusModeRestoreSwitch).async_turn_on()
+    await hass.async_block_till_done()
+    assert fired == [{"action": "restore_on"}]
+
+
+async def test_restore_switch_turn_off_fires_event(hass: HomeAssistant) -> None:
+    fired = _listen(hass)
+    await _make_switch(hass, FocusModeRestoreSwitch).async_turn_off()
+    await hass.async_block_till_done()
+    assert fired == [{"action": "restore_off"}]
+
+
+# ── Availability ───────────────────────────────────────────────────────────────
+
+async def test_switch_unavailable_when_coordinator_offline(hass: HomeAssistant) -> None:
+    coordinator = _make_coordinator(hass, MOCK_STATE)
     coordinator.set_unavailable()
     sw = FocusModeActiveSwitch(coordinator, _make_entry())
     assert sw.available is False

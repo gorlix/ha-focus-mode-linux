@@ -2,23 +2,15 @@
   "config": {
     "step": {
       "user": {
-        "title": "Connect to Linux Focus Mode",
-        "description": "Enter the connection details for the Focus Mode daemon running on your Linux machine.",
+        "title": "Connect Linux Focus Mode",
+        "description": "{app_instruction}",
         "data": {
-          "host": "Host (IP or hostname)",
-          "port": "Port",
-          "token": "Bearer Token"
+          "webhook_id": "Webhook ID"
         }
-      },
-      "webhook": {
-        "title": "Configure Webhooks",
-        "description": "Copy the URL below and paste it into **both** webhook fields of the Linux app (Settings → HA Integration):\n\n`{webhook_url}`\n\nThis URL must be reachable from your Linux machine."
       }
     },
     "error": {
-      "cannot_connect": "Cannot connect to the Focus Mode daemon. Check host, port, and that the app is running.",
-      "invalid_auth": "Invalid bearer token. Check the token in the Linux app settings.",
-      "unknown": "An unexpected error occurred."
+      "invalid_webhook_id": "Webhook ID cannot be empty."
     },
     "abort": {
       "already_configured": "This Focus Mode instance is already configured."

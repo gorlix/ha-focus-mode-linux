@@ -17,6 +17,8 @@ from .coordinator import FocusModeCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
+_EVENT = "linux_focus_mode_command"
+
 _DEVICE_INFO_BASE = {
     "manufacturer": "Linux Focus Mode",
     "model": "Focus Mode Daemon",
@@ -80,20 +82,18 @@ class FocusModeActiveSwitch(_FocusModeBaseSwitchEntity):
         return bool(lock.get("locked")) and lock.get("remaining_time") is None
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        await self.coordinator.client.async_toggle_blocker(True)
-        await self.coordinator.async_request_refresh()
+        self.hass.bus.async_fire(_EVENT, {"action": "focus_on"})
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         if self._ha_lock_active():
             raise HomeAssistantError(
                 "Cannot disable Focus Mode while HA Lock is active"
             )
-        await self.coordinator.client.async_toggle_blocker(False)
-        await self.coordinator.async_request_refresh()
+        self.hass.bus.async_fire(_EVENT, {"action": "focus_off"})
 
 
 class FocusModeHaLockSwitch(_FocusModeBaseSwitchEntity):
-    """Indefinite HA lock — only removable via DELETE /api/lock."""
+    """Indefinite HA lock — only removable via unlock service."""
 
     _attr_translation_key = "ha_lock"
     _attr_icon = "mdi:lock"
@@ -110,12 +110,10 @@ class FocusModeHaLockSwitch(_FocusModeBaseSwitchEntity):
         return bool(lock.get("locked")) and lock.get("remaining_time") is None
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        await self.coordinator.client.async_lock_ha()
-        await self.coordinator.async_request_refresh()
+        self.hass.bus.async_fire(_EVENT, {"action": "lock_ha"})
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.coordinator.client.async_unlock()
-        await self.coordinator.async_request_refresh()
+        self.hass.bus.async_fire(_EVENT, {"action": "unlock"})
 
 
 class FocusModeRestoreSwitch(_FocusModeBaseSwitchEntity):
@@ -135,9 +133,7 @@ class FocusModeRestoreSwitch(_FocusModeBaseSwitchEntity):
         return bool(self.coordinator.data.get("restore_enabled", False))
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        await self.coordinator.client.async_toggle_restore(True)
-        await self.coordinator.async_request_refresh()
+        self.hass.bus.async_fire(_EVENT, {"action": "restore_on"})
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.coordinator.client.async_toggle_restore(False)
-        await self.coordinator.async_request_refresh()
+        self.hass.bus.async_fire(_EVENT, {"action": "restore_off"})

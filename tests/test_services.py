@@ -2,90 +2,74 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
-from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.core import HomeAssistant
 
 from custom_components.linux_focus_mode import _register_services
-from custom_components.linux_focus_mode.api import FocusModeApiCommunicationError
-from custom_components.linux_focus_mode.coordinator import FocusModeCoordinator
 from custom_components.linux_focus_mode.const import DOMAIN
 
-from .conftest import mock_client
+_EVENT = "linux_focus_mode_command"
 
 
-async def _setup(hass: HomeAssistant, mock_client: AsyncMock) -> FocusModeCoordinator:
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
-    coordinator.async_request_refresh = AsyncMock()
-    _register_services(hass, coordinator)
-    return coordinator
+def _setup(hass: HomeAssistant) -> list:
+    fired = []
+    hass.bus.async_listen(_EVENT, lambda e: fired.append(dict(e.data)))
+    _register_services(hass)
+    return fired
 
 
-def _call(data: dict | None = None) -> ServiceCall:
-    sc = MagicMock(spec=ServiceCall)
-    sc.data = data or {}
-    return sc
-
-
-async def test_service_focus_on(hass: HomeAssistant, mock_client: AsyncMock) -> None:
-    coordinator = await _setup(hass, mock_client)
+async def test_service_focus_on(hass: HomeAssistant) -> None:
+    fired = _setup(hass)
     await hass.services.async_call(DOMAIN, "focus_on", {}, blocking=True)
-    mock_client.async_toggle_blocker.assert_awaited_with(True)
+    await hass.async_block_till_done()
+    assert fired == [{"action": "focus_on"}]
 
 
-async def test_service_focus_off(hass: HomeAssistant, mock_client: AsyncMock) -> None:
-    coordinator = await _setup(hass, mock_client)
+async def test_service_focus_off(hass: HomeAssistant) -> None:
+    fired = _setup(hass)
     await hass.services.async_call(DOMAIN, "focus_off", {}, blocking=True)
-    mock_client.async_toggle_blocker.assert_awaited_with(False)
+    await hass.async_block_till_done()
+    assert fired == [{"action": "focus_off"}]
 
 
-async def test_service_lock_timer(hass: HomeAssistant, mock_client: AsyncMock) -> None:
-    await _setup(hass, mock_client)
+async def test_service_lock_timer(hass: HomeAssistant) -> None:
+    fired = _setup(hass)
     await hass.services.async_call(DOMAIN, "lock_timer", {"minutes": 25}, blocking=True)
-    mock_client.async_lock_timer.assert_awaited_with(25)
+    await hass.async_block_till_done()
+    assert fired == [{"action": "lock_timer", "minutes": 25}]
 
 
-async def test_service_lock_target(hass: HomeAssistant, mock_client: AsyncMock) -> None:
-    await _setup(hass, mock_client)
+async def test_service_lock_target(hass: HomeAssistant) -> None:
+    fired = _setup(hass)
     await hass.services.async_call(
         DOMAIN, "lock_target", {"hour": 14, "minute": 30}, blocking=True
     )
-    mock_client.async_lock_target.assert_awaited_with(14, 30)
+    await hass.async_block_till_done()
+    assert fired == [{"action": "lock_target", "hour": 14, "minute": 30}]
 
 
-async def test_service_lock_ha(hass: HomeAssistant, mock_client: AsyncMock) -> None:
-    await _setup(hass, mock_client)
+async def test_service_lock_ha(hass: HomeAssistant) -> None:
+    fired = _setup(hass)
     await hass.services.async_call(DOMAIN, "lock_ha", {}, blocking=True)
-    mock_client.async_lock_ha.assert_awaited_once()
+    await hass.async_block_till_done()
+    assert fired == [{"action": "lock_ha"}]
 
 
-async def test_service_unlock(hass: HomeAssistant, mock_client: AsyncMock) -> None:
-    await _setup(hass, mock_client)
+async def test_service_unlock(hass: HomeAssistant) -> None:
+    fired = _setup(hass)
     await hass.services.async_call(DOMAIN, "unlock", {}, blocking=True)
-    mock_client.async_unlock.assert_awaited_once()
+    await hass.async_block_till_done()
+    assert fired == [{"action": "unlock"}]
 
 
-async def test_service_restore_on(hass: HomeAssistant, mock_client: AsyncMock) -> None:
-    await _setup(hass, mock_client)
+async def test_service_restore_on(hass: HomeAssistant) -> None:
+    fired = _setup(hass)
     await hass.services.async_call(DOMAIN, "restore_on", {}, blocking=True)
-    mock_client.async_toggle_restore.assert_awaited_with(True)
+    await hass.async_block_till_done()
+    assert fired == [{"action": "restore_on"}]
 
 
-async def test_service_restore_off(hass: HomeAssistant, mock_client: AsyncMock) -> None:
-    await _setup(hass, mock_client)
+async def test_service_restore_off(hass: HomeAssistant) -> None:
+    fired = _setup(hass)
     await hass.services.async_call(DOMAIN, "restore_off", {}, blocking=True)
-    mock_client.async_toggle_restore.assert_awaited_with(False)
-
-
-async def test_service_api_error_raises_ha_error(
-    hass: HomeAssistant, mock_client: AsyncMock
-) -> None:
-    """API failure in a service call raises HomeAssistantError."""
-    coordinator = await _setup(hass, mock_client)
-    mock_client.async_toggle_blocker.side_effect = FocusModeApiCommunicationError("down")
-
-    with pytest.raises(HomeAssistantError):
-        await hass.services.async_call(DOMAIN, "focus_on", {}, blocking=True)
+    await hass.async_block_till_done()
+    assert fired == [{"action": "restore_off"}]

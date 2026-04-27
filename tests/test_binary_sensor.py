@@ -12,7 +12,7 @@ from custom_components.linux_focus_mode.binary_sensor import (
 )
 from custom_components.linux_focus_mode.coordinator import FocusModeCoordinator
 
-from .conftest import MOCK_STATE, MOCK_STATE_HA_LOCK, MOCK_STATE_TIMER_LOCK, mock_client
+from .conftest import MOCK_STATE, MOCK_STATE_HA_LOCK, MOCK_STATE_TIMER_LOCK
 
 
 def _make_entry():
@@ -21,52 +21,41 @@ def _make_entry():
     return entry
 
 
-async def test_locked_sensor_false_when_unlocked(
-    hass: HomeAssistant, mock_client: AsyncMock
-) -> None:
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
+def _make_coordinator(hass: HomeAssistant, state: dict, available: bool = True):
+    coordinator = FocusModeCoordinator(hass)
+    coordinator.data = state
+    coordinator.available = available
+    return coordinator
+
+
+async def test_locked_sensor_false_when_unlocked(hass: HomeAssistant) -> None:
+    coordinator = _make_coordinator(hass, MOCK_STATE)
     sensor = FocusModeLockedBinarySensor(coordinator, _make_entry())
     assert sensor.is_on is False
 
 
-async def test_locked_sensor_true_with_ha_lock(
-    hass: HomeAssistant, mock_client: AsyncMock
-) -> None:
-    mock_client.async_get_state.return_value = MOCK_STATE_HA_LOCK
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
+async def test_locked_sensor_true_with_ha_lock(hass: HomeAssistant) -> None:
+    coordinator = _make_coordinator(hass, MOCK_STATE_HA_LOCK)
     sensor = FocusModeLockedBinarySensor(coordinator, _make_entry())
     assert sensor.is_on is True
 
 
-async def test_locked_sensor_true_with_timer_lock(
-    hass: HomeAssistant, mock_client: AsyncMock
-) -> None:
-    mock_client.async_get_state.return_value = MOCK_STATE_TIMER_LOCK
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
+async def test_locked_sensor_true_with_timer_lock(hass: HomeAssistant) -> None:
+    coordinator = _make_coordinator(hass, MOCK_STATE_TIMER_LOCK)
     sensor = FocusModeLockedBinarySensor(coordinator, _make_entry())
     assert sensor.is_on is True
 
 
-async def test_app_online_sensor_true_when_available(
-    hass: HomeAssistant, mock_client: AsyncMock
-) -> None:
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
+async def test_app_online_sensor_true_when_available(hass: HomeAssistant) -> None:
+    coordinator = _make_coordinator(hass, MOCK_STATE, available=True)
     sensor = FocusModeAvailableBinarySensor(coordinator, _make_entry())
     assert sensor.is_on is True
     assert sensor.available is True
 
 
-async def test_app_online_sensor_false_after_dying_gasp(
-    hass: HomeAssistant, mock_client: AsyncMock
-) -> None:
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
+async def test_app_online_sensor_false_after_dying_gasp(hass: HomeAssistant) -> None:
+    coordinator = _make_coordinator(hass, MOCK_STATE, available=True)
     coordinator.set_unavailable()
     sensor = FocusModeAvailableBinarySensor(coordinator, _make_entry())
     assert sensor.is_on is False
-    # App Online sensor stays available=True so HA shows it (not greyed out)
-    assert sensor.available is True
+    assert sensor.available is True  # App Online stays available (not greyed out)

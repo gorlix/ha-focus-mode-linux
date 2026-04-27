@@ -12,7 +12,7 @@ from custom_components.linux_focus_mode.sensor import (
     FocusModeLockRemainingSensor,
 )
 
-from .conftest import MOCK_STATE, MOCK_STATE_TIMER_LOCK, mock_client
+from .conftest import MOCK_STATE, MOCK_STATE_TIMER_LOCK
 
 
 def _make_entry():
@@ -21,57 +21,47 @@ def _make_entry():
     return entry
 
 
-async def test_blocked_count_sensor(hass: HomeAssistant, mock_client: AsyncMock) -> None:
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
+def _make_coordinator(hass: HomeAssistant, state: dict | None, available: bool = True):
+    coordinator = FocusModeCoordinator(hass)
+    coordinator.data = state
+    coordinator.available = available
+    return coordinator
+
+
+async def test_blocked_count_sensor(hass: HomeAssistant) -> None:
+    coordinator = _make_coordinator(hass, MOCK_STATE)
     sensor = FocusModeBlockedCountSensor(coordinator, _make_entry())
     assert sensor.native_value == 2  # MOCK_STATE has 2 blocked items
 
 
-async def test_blocked_count_sensor_attributes(
-    hass: HomeAssistant, mock_client: AsyncMock
-) -> None:
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
+async def test_blocked_count_sensor_attributes(hass: HomeAssistant) -> None:
+    coordinator = _make_coordinator(hass, MOCK_STATE)
     sensor = FocusModeBlockedCountSensor(coordinator, _make_entry())
     attrs = sensor.extra_state_attributes
     assert "blocked_items" in attrs
     assert len(attrs["blocked_items"]) == 2
 
 
-async def test_blocked_count_sensor_no_data(
-    hass: HomeAssistant, mock_client: AsyncMock
-) -> None:
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    coordinator.data = None
+async def test_blocked_count_sensor_no_data(hass: HomeAssistant) -> None:
+    coordinator = _make_coordinator(hass, None, available=False)
     sensor = FocusModeBlockedCountSensor(coordinator, _make_entry())
     assert sensor.native_value is None
 
 
-async def test_lock_remaining_sensor_no_lock(
-    hass: HomeAssistant, mock_client: AsyncMock
-) -> None:
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
+async def test_lock_remaining_sensor_no_lock(hass: HomeAssistant) -> None:
+    coordinator = _make_coordinator(hass, MOCK_STATE)
     sensor = FocusModeLockRemainingSensor(coordinator, _make_entry())
     assert sensor.native_value == "—"
 
 
-async def test_lock_remaining_sensor_with_lock(
-    hass: HomeAssistant, mock_client: AsyncMock
-) -> None:
-    mock_client.async_get_state.return_value = MOCK_STATE_TIMER_LOCK
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
+async def test_lock_remaining_sensor_with_lock(hass: HomeAssistant) -> None:
+    coordinator = _make_coordinator(hass, MOCK_STATE_TIMER_LOCK)
     sensor = FocusModeLockRemainingSensor(coordinator, _make_entry())
     assert sensor.native_value == "22m 14s"
 
 
-async def test_sensor_unavailable_when_coordinator_offline(
-    hass: HomeAssistant, mock_client: AsyncMock
-) -> None:
-    coordinator = FocusModeCoordinator(hass, client=mock_client)
-    await coordinator.async_refresh()
+async def test_sensor_unavailable_when_coordinator_offline(hass: HomeAssistant) -> None:
+    coordinator = _make_coordinator(hass, MOCK_STATE, available=True)
     coordinator.set_unavailable()
     sensor = FocusModeBlockedCountSensor(coordinator, _make_entry())
     assert sensor.available is False
