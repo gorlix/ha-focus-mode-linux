@@ -6,7 +6,7 @@
   "issue_tracker": "https://github.com/gorlix/ha-focus-mode-linux/issues",
   "codeowners": ["@gorlix"],
   "integration_type": "service",
-  "iot_class": "local_polling",
+  "iot_class": "local_push",
   "config_flow": true,
   "requirements": []
 }

@@ -5,7 +5,7 @@
 Home Assistant custom integration (HACS) for the **Linux Focus Mode** project.
 
 The Linux app is a productivity daemon that blocks distracting apps and websites.
-It exposes a REST API (port 8000) and sends push webhooks to HA on every state change.
+All communication is **initiated by the Linux app** — HA never connects to the laptop.
 
 This integration is the HA side of the bidirectional communication.
 
@@ -14,17 +14,37 @@ The complete API contract and behavioral spec is in `HACS_PLUGIN_SPEC.md`.
 
 ---
 
+## Communication architecture
+
+```
+Linux app (laptop, dynamic IP)
+  │
+  │  POST /api/webhook/<webhook_id>   ← state push on every change
+  │  POST /api/webhook/<webhook_id>   ← dying_gasp on shutdown
+  ▼
+Home Assistant webhook listener
+  → coordinator.update_from_webhook() → entities re-render immediately
+
+Home Assistant services / switches
+  → hass.bus.async_fire("linux_focus_mode_command", {"action": "..."})
+  → Linux app receives command via WebSocket subscription to HA event bus
+```
+
+**No REST polling. No host/IP/port stored. HA never connects to the laptop.**
+
+---
+
 ## Repository layout
 
 ```
 custom_components/linux_focus_mode/   ← DOMAIN = "linux_focus_mode"
 ├── __init__.py      setup_entry / unload_entry / service registration
-├── manifest.json    HA manifest
-├── const.py         DOMAIN, CONF_* constants
-├── api.py           FocusModeApiClient — all REST methods
-├── coordinator.py   FocusModeCoordinator — polling + availability
-├── config_flow.py   2-step UI: credentials → webhook URL display
-├── webhook.py       HA webhook listener for push events
+├── manifest.json    HA manifest (iot_class: local_push)
+├── const.py         DOMAIN, CONF_WEBHOOK_ID
+├── api.py           Stub — only exception classes kept for compatibility
+├── coordinator.py   FocusModeCoordinator — event-driven, update_interval=None
+├── config_flow.py   Single step: user pastes webhook_id from the Linux app
+├── webhook.py       HA webhook listener → coordinator.update_from_webhook()
 ├── switch.py        3 switches: active, ha_lock, restore
 ├── sensor.py        2 sensors: blocked_count, lock_remaining
 ├── binary_sensor.py 2 binary sensors: locked, app_online
@@ -40,13 +60,34 @@ tests/               pytest test suite
 ## Running tests
 
 ```bash
-pip install -r requirements-dev.txt
-pytest tests/ --cov=custom_components/linux_focus_mode
+# Create venv once
+python -m venv /tmp/ha-focus-venv
+/tmp/ha-focus-venv/bin/pip install -r requirements-dev.txt
+
+# Run tests
+/tmp/ha-focus-venv/bin/pytest tests/ --cov=custom_components/linux_focus_mode
 ```
 
-The test framework is `pytest-homeassistant-custom-component`, which provides a real
-HA event loop and fixtures (`hass`, `enable_custom_integrations`).
-All API calls are mocked — no live daemon needed.
+The test framework is `pytest-homeassistant-custom-component`.
+No live daemon needed — state is injected directly via `coordinator.data`.
+
+---
+
+## How state flows
+
+1. Linux app pushes `POST /api/webhook/<webhook_id>` with one of:
+   - `{"type": "update_sensor_states", "data": [...]}` — native app format
+   - `{"event": "focus_toggled", "active": true}` — legacy format
+   - `{"event": "dying_gasp"}` — shutdown signal
+2. `webhook.py` receives it and calls `coordinator.update_from_webhook(data)`
+   or `coordinator.set_unavailable()` for dying_gasp.
+3. `coordinator.async_set_updated_data(parsed)` notifies all subscribed entities.
+
+## How commands flow
+
+1. User calls a service or toggles a switch in HA.
+2. `hass.bus.async_fire("linux_focus_mode_command", {"action": "focus_on"})`.
+3. Linux app receives the event via its persistent WebSocket subscription.
 
 ---
 
@@ -65,16 +106,17 @@ All API calls are mocked — no live daemon needed.
 
 1. Add the service definition to `services.yaml`.
 2. Register it in `_register_services()` in `__init__.py` following the existing pattern.
+   Fire the event: `hass.bus.async_fire("linux_focus_mode_command", {"action": "..."})`.
 3. Write a test in `tests/test_services.py`.
 
 ---
 
-## Behavioral constraints (see HACS_PLUGIN_SPEC.md for details)
+## Behavioral constraints
 
-- **HA Lock** is indefinite — only `DELETE /api/lock` removes it.
+- **HA Lock** is indefinite — only the `unlock` service removes it.
 - **Active switch turn_off** raises `HomeAssistantError` when HA Lock is engaged.
-- **API responses are optimistic** — the daemon enqueues actions and responds immediately.
-  Never update entity state from the POST response; wait for `async_request_refresh()`.
+- **Commands are fire-and-forget** — never update entity state from the command;
+  wait for the app to push back state via webhook.
 - **dying_gasp webhook** → `coordinator.set_unavailable()` immediately.
 - The same HA webhook URL goes into **both** `state_event_url` and `dying_gasp_url`
   in the Linux app settings.
