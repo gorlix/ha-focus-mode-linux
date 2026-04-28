@@ -17,8 +17,8 @@ jobs:
 
       - name: Create ZIP archive
         run: |
-          cd custom_components
-          zip -r ../linux_focus_mode.zip linux_focus_mode/
+          cd custom_components/linux_focus_mode
+          zip -r ../../linux_focus_mode.zip .
 
       - name: Upload ZIP to Release
         uses: softprops/action-gh-release@v2
