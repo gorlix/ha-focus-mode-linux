@@ -52,6 +52,9 @@ async def async_register_webhook(
         else:
             coordinator.update_from_webhook(data)
 
+    # Unregister first — safe no-op if not registered. Prevents
+    # "Handler is already defined!" on HA retries / reloads.
+    async_unregister(hass, webhook_id)
     async_register(
         hass,
         domain="linux_focus_mode",
