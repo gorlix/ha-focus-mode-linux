@@ -9,7 +9,7 @@ from custom_components.linux_focus_mode.coordinator import (
     _parse_webhook_payload,
 )
 
-from .conftest import MOCK_STATE, MOCK_STATE_HA_LOCK, MOCK_STATE_TIMER_LOCK
+from .conftest import MOCK_STATE
 
 
 async def test_update_from_webhook_native_format(hass: HomeAssistant) -> None:
@@ -73,7 +73,9 @@ def test_parse_native_ha_lock() -> None:
     base = {**MOCK_STATE, "focus_lock": dict(MOCK_STATE["focus_lock"])}
     payload = {
         "type": "update_sensor_states",
-        "data": [{"unique_id": "ha_lock_active", "state": True, "type": "binary_sensor"}],
+        "data": [
+            {"unique_id": "ha_lock_active", "state": True, "type": "binary_sensor"}
+        ],
     }
     result = _parse_webhook_payload(payload, base)
     assert result["focus_lock"]["locked"] is True

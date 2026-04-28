@@ -26,7 +26,9 @@ def _request(payload):
     return req
 
 
-async def test_webhook_focus_event_calls_update_from_webhook(hass: HomeAssistant) -> None:
+async def test_webhook_focus_event_calls_update_from_webhook(
+    hass: HomeAssistant,
+) -> None:
     """Non-dying-gasp event triggers coordinator.update_from_webhook."""
     coordinator = _make_coordinator(hass)
     coordinator.update_from_webhook = MagicMock()

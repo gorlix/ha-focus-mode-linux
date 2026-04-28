@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -54,9 +53,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if not hass.data[DOMAIN]:
         for service in (
-            "focus_on", "focus_off",
-            "lock_timer", "lock_target", "lock_ha", "unlock",
-            "restore_on", "restore_off",
+            "focus_on",
+            "focus_off",
+            "lock_timer",
+            "lock_target",
+            "lock_ha",
+            "unlock",
+            "restore_on",
+            "restore_off",
         ):
             hass.services.async_remove(DOMAIN, service)
 
@@ -96,15 +100,21 @@ def _register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, "focus_on", svc_focus_on)
     hass.services.async_register(DOMAIN, "focus_off", svc_focus_off)
     hass.services.async_register(
-        DOMAIN, "lock_timer", svc_lock_timer,
+        DOMAIN,
+        "lock_timer",
+        svc_lock_timer,
         schema=vol.Schema({vol.Required("minutes"): vol.All(cv.positive_int)}),
     )
     hass.services.async_register(
-        DOMAIN, "lock_target", svc_lock_target,
-        schema=vol.Schema({
-            vol.Required("hour"): vol.All(int, vol.Range(min=0, max=23)),
-            vol.Required("minute"): vol.All(int, vol.Range(min=0, max=59)),
-        }),
+        DOMAIN,
+        "lock_target",
+        svc_lock_target,
+        schema=vol.Schema(
+            {
+                vol.Required("hour"): vol.All(int, vol.Range(min=0, max=23)),
+                vol.Required("minute"): vol.All(int, vol.Range(min=0, max=59)),
+            }
+        ),
     )
     hass.services.async_register(DOMAIN, "lock_ha", svc_lock_ha)
     hass.services.async_register(DOMAIN, "unlock", svc_unlock)

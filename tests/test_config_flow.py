@@ -32,12 +32,15 @@ async def test_config_flow_success(hass: HomeAssistant) -> None:
     """Happy path: valid webhook_id creates entry."""
     result = await _start_flow(hass)
 
-    with patch(
-        "custom_components.linux_focus_mode.config_flow.async_generate_url",
-        return_value=ENTRY_DATA["webhook_url"],
-    ), patch(
-        "custom_components.linux_focus_mode.async_setup_entry",
-        return_value=True,
+    with (
+        patch(
+            "custom_components.linux_focus_mode.config_flow.async_generate_url",
+            return_value=ENTRY_DATA["webhook_url"],
+        ),
+        patch(
+            "custom_components.linux_focus_mode.async_setup_entry",
+            return_value=True,
+        ),
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],

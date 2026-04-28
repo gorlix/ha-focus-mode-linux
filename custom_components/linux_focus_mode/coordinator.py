@@ -42,7 +42,7 @@ class FocusModeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             hass=hass,
             logger=_LOGGER,
             name=DOMAIN,
-            update_interval=None,   # no polling
+            update_interval=None,  # no polling
         )
         self.available: bool = False
 
@@ -88,7 +88,9 @@ def _parse_webhook_payload(
     if event == "focus_toggled":
         data["active"] = bool(payload.get("active", data.get("active")))
     elif event == "restore_changed":
-        data["restore_enabled"] = bool(payload.get("enabled", data.get("restore_enabled")))
+        data["restore_enabled"] = bool(
+            payload.get("enabled", data.get("restore_enabled"))
+        )
     elif event in ("lock_activated", "lock_cancelled"):
         # Delegate to a full refresh — we don't have enough info here.
         # The app should follow up with an update_sensor_states push.

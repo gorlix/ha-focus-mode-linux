@@ -48,6 +48,7 @@ def _listen(hass: HomeAssistant) -> list:
 
 # ── Active switch ──────────────────────────────────────────────────────────────
 
+
 async def test_active_switch_is_on(hass: HomeAssistant) -> None:
     assert _make_switch(hass, FocusModeActiveSwitch).is_on is True
 
@@ -79,21 +80,28 @@ async def test_active_switch_turn_off_blocked_by_ha_lock(hass: HomeAssistant) ->
     assert fired == []
 
 
-async def test_active_switch_turn_off_allowed_with_timer_lock(hass: HomeAssistant) -> None:
+async def test_active_switch_turn_off_allowed_with_timer_lock(
+    hass: HomeAssistant,
+) -> None:
     fired = _listen(hass)
-    await _make_switch(hass, FocusModeActiveSwitch, MOCK_STATE_TIMER_LOCK).async_turn_off()
+    await _make_switch(
+        hass, FocusModeActiveSwitch, MOCK_STATE_TIMER_LOCK
+    ).async_turn_off()
     await hass.async_block_till_done()
     assert fired == [{"action": "focus_off"}]
 
 
 # ── HA Lock switch ─────────────────────────────────────────────────────────────
 
+
 async def test_ha_lock_switch_is_on(hass: HomeAssistant) -> None:
     assert _make_switch(hass, FocusModeHaLockSwitch, MOCK_STATE_HA_LOCK).is_on is True
 
 
 async def test_ha_lock_switch_off_with_timer_lock(hass: HomeAssistant) -> None:
-    assert _make_switch(hass, FocusModeHaLockSwitch, MOCK_STATE_TIMER_LOCK).is_on is False
+    assert (
+        _make_switch(hass, FocusModeHaLockSwitch, MOCK_STATE_TIMER_LOCK).is_on is False
+    )
 
 
 async def test_ha_lock_turn_on_fires_event(hass: HomeAssistant) -> None:
@@ -111,6 +119,7 @@ async def test_ha_lock_turn_off_fires_event(hass: HomeAssistant) -> None:
 
 
 # ── Restore switch ─────────────────────────────────────────────────────────────
+
 
 async def test_restore_switch_is_on(hass: HomeAssistant) -> None:
     assert _make_switch(hass, FocusModeRestoreSwitch).is_on is True
@@ -131,6 +140,7 @@ async def test_restore_switch_turn_off_fires_event(hass: HomeAssistant) -> None:
 
 
 # ── Availability ───────────────────────────────────────────────────────────────
+
 
 async def test_switch_unavailable_when_coordinator_offline(hass: HomeAssistant) -> None:
     coordinator = _make_coordinator(hass, MOCK_STATE)
