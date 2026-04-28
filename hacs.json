@@ -1,5 +1,6 @@
 {
   "name": "Linux Focus Mode",
   "zip_release": true,
+  "filename": "linux_focus_mode.zip",
   "homeassistant": "2024.1.0"
 }
